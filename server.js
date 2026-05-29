@@ -18,28 +18,16 @@ function isPidAlive(pid) {
 }
 
 // ─── Inferir projeto a partir das mensagens ───────────────────────────────────
+// Adicione seus próprios projetos abaixo seguindo o mesmo padrão
 const PROJECTS = [
-  { re: /iodine/i,                      label: 'Iodine',             emoji: '🧪', color: '#7c3aed' },
-  { re: /lumina/i,                      label: 'Lumina Render',      emoji: '✨', color: '#f59e0b' },
-  { re: /neuroelei/i,                   label: 'NeuroEleição',       emoji: '🧠', color: '#3b82f6' },
-  { re: /guia.*festa|festa/i,           label: 'Guia de Festa',      emoji: '🎉', color: '#ec4899' },
-  { re: /plataforma.*clon|clon/i,       label: 'Plataforma Clones',  emoji: '🤖', color: '#06b6d4' },
-  { re: /builder.*auto|auto.*market/i,  label: 'Builder Auto Mktg',  emoji: '📣', color: '#10b981' },
-  { re: /falc[aã]o|niche.hunter/i,      label: 'Falcão',             emoji: '🦅', color: '#f97316' },
-  { re: /comanda|roni/i,                label: 'Gestão Comanda',     emoji: '🍽️', color: '#84cc16' },
-  { re: /lgpd|ripd/i,                   label: 'LGPD',               emoji: '🔒', color: '#6366f1' },
-  { re: /subido.*tr[aá]fego/i,          label: 'Subido de Tráfego',  emoji: '📈', color: '#ef4444' },
-  { re: /virginia|@virgini/i,           label: 'Jornada Virginia',   emoji: '🌱', color: '#22c55e' },
-  { re: /fundacred|tjto|processo/i,     label: 'Fundacred',          emoji: '⚖️', color: '#a78bfa' },
-  { re: /viva.*melhor|consultorio/i,    label: 'Consultório',        emoji: '🌿', color: '#34d399' },
-  { re: /stories.*10x/i,               label: 'Stories 10x',        emoji: '📱', color: '#fb923c' },
-  { re: /ads.*ia|plataforma.*ads/i,    label: 'Ads para IAs',       emoji: '💡', color: '#38bdf8' },
-  { re: /meta.*ads/i,                  label: 'Meta Ads',           emoji: '📊', color: '#818cf8' },
-  { re: /amazon|bestseller|kdp/i,      label: 'Amazon Bestseller',  emoji: '📚', color: '#fbbf24' },
-  { re: /agencia|lorenzi/i,            label: 'Agência Sites',      emoji: '🏛️', color: '#e879f9' },
-  { re: /session.*monitor|dashboard/i, label: 'Session Monitor',    emoji: '📡', color: '#0ea5e9' },
+  { re: /session.*monitor|dashboard/i, label: 'Session Monitor', emoji: '📡', color: '#0ea5e9' },
+  { re: /frontend|react|nextjs/i,      label: 'Frontend',        emoji: '🖥️',  color: '#06b6d4' },
+  { re: /backend|api|server/i,         label: 'Backend',         emoji: '⚙️',  color: '#6366f1' },
+  { re: /mobile|flutter/i,             label: 'Mobile',          emoji: '📱',  color: '#f97316' },
+  { re: /database|sql|supabase/i,      label: 'Database',        emoji: '🗄️',  color: '#84cc16' },
+  { re: /deploy|devops|docker/i,       label: 'DevOps',          emoji: '🚀',  color: '#ef4444' },
+  { re: /docs|readme|documenta/i,      label: 'Docs',            emoji: '📝',  color: '#f59e0b' },
 ];
-
 function inferProject(messages) {
   const text = messages.join(' ');
   for (const p of PROJECTS) {
@@ -261,7 +249,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log('');
   console.log('  ╔══════════════════════════════════╗');
-  console.log('  ║   ✦ Virginia Session Monitor     ║');
+  console.log('  ║   ✦ Claude Code Session Monitor  ║');
   console.log('  ║   → http://localhost:' + PORT + '       ║');
   console.log('  ║   Ctrl+C para parar              ║');
   console.log('  ╚══════════════════════════════════╝');

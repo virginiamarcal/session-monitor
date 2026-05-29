@@ -2,7 +2,7 @@
 
 Dashboard local para monitorar todas as suas sessões do Claude Code em tempo real.
 
-![dashboard](https://img.shields.io/badge/Claude_Code-Session_Monitor-00ff41?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6Ii8+PC9zdmc+)
+![dashboard](https://img.shields.io/badge/Claude_Code-Session_Monitor-00ff41?style=for-the-badge)
 
 ## O que é
 
@@ -22,7 +22,7 @@ Painel estilo Matrix que mostra:
 
 **1. Baixe o repositório**
 
-Clique em **Code → Download ZIP**, extraia a pasta.
+Clique em **Code → Download ZIP** e extraia a pasta.
 
 **2. Peça pro Claude instalar**
 
@@ -30,25 +30,35 @@ Abra o Claude Code, arraste a pasta para o chat e mande:
 
 > *"instala o session monitor pra mim"*
 
-O Claude move os arquivos para o lugar certo e inicia o dashboard automaticamente.
-
-Acesse **http://localhost:4242**
+O Claude roda o `install.ps1` que:
+- Copia os arquivos para `~/.claude/dashboard/`
+- Configura o perfil do PowerShell para abrir o dashboard automaticamente a cada terminal
+- Inicia o servidor e abre `http://localhost:4242`
 
 ## Como usar
 
 | Ação | Como fazer |
 |------|-----------|
-| Ver sessões ativas | Abre automaticamente ao iniciar |
+| Ver sessões ativas | Abre automaticamente ao abrir qualquer terminal |
 | Retomar sessão | Clique em **▶ RETOMAR** no card |
 | Renomear sessão | Clique no nome do projeto no card |
 | Fechar card | Clique no **✕** no canto do card |
 | Atualização | Automática a cada 5 segundos |
 
+## Personalizar projetos
+
+O `server.js` tem uma lista de padrões genéricos para nomear suas sessões.  
+Edite o array `PROJECTS` com os nomes dos seus próprios projetos:
+
+```js
+{ re: /meu-projeto/i, label: 'Meu Projeto', emoji: '🚀', color: '#3b82f6' },
+```
+
 ## Notas
 
 - O servidor roda **localmente** na porta `4242` — nenhum dado sai da sua máquina
 - Os arquivos `sleeping.json` e `custom_names.json` são gerados automaticamente e ficam fora do repositório
-- Para parar o servidor: `Ctrl+C` no terminal
+- Para parar o servidor: feche o terminal ou mate o processo node na porta 4242
 
 ---
 
