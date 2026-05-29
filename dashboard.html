@@ -285,9 +285,26 @@ body::after {
   content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
   background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
 }
+
+  #update-banner {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: #f59e0b;
+    color: #000;
+    text-align: center;
+    padding: 10px 16px;
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 9999;
+  }
+  #update-banner a { color: #000; text-decoration: underline; }
 </style>
 </head>
 <body>
+<div id="update-banner"></div>
+
 
 <!-- Matrix rain canvas -->
 <canvas id="matrix-canvas"></canvas>
@@ -821,6 +838,19 @@ function refresh(){
 
 refresh();
 setInterval(refresh, 5000);
+
+function checkVersion() {
+  fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
+    if (d.update) {
+      var b = document.getElementById('update-banner');
+      b.innerHTML = 'Nova versao disponivel: ' + d.update.current + ' &rarr; ' + d.update.latest +
+        ' &nbsp;&mdash;&nbsp; <a href="' + d.update.url + '" target="_blank">Ver no GitHub</a>';
+      b.style.display = 'block';
+    }
+  }).catch(function(){});
+}
+checkVersion();
+setInterval(checkVersion, 60000);
 </script>
 </body>
 </html>

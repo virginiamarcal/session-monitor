@@ -12,6 +12,7 @@ Write-Host "  Instalando Session Monitor..." -ForegroundColor Cyan
 if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force $dest | Out-Null }
 Copy-Item "$src\server.js"      "$dest\server.js"      -Force
 Copy-Item "$src\dashboard.html" "$dest\dashboard.html" -Force
+Copy-Item "$srcersion.json"    "$destersion.json"    -Force
 Write-Host "  [OK] Arquivos copiados para $dest" -ForegroundColor Green
 
 # 2. Garante que o diretório do perfil PowerShell existe
