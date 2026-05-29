@@ -20,40 +20,19 @@ Painel estilo Matrix que mostra:
 
 ## Instalação
 
-**1. Clone o repositório**
-```bash
-git clone https://github.com/virginiamarcal/session-monitor
-```
+**1. Baixe o repositório**
 
-**2. Mova a pasta para dentro do diretório do Claude**
+Clique em **Code → Download ZIP**, extraia a pasta.
 
-| Sistema | Caminho |
-|---------|---------|
-| Windows | `C:\Users\SEU_NOME\.claude\dashboard` |
-| Mac/Linux | `~/.claude/dashboard` |
+**2. Peça pro Claude instalar**
 
-A estrutura deve ficar assim:
-```
-~/.claude/
-└── dashboard/
-    ├── server.js
-    ├── dashboard.html
-    └── start.bat
-```
+Abra o Claude Code, arraste a pasta para o chat e mande:
 
-**3. Inicie o dashboard**
+> *"instala o session monitor pra mim"*
 
-No Windows:
-```
-Clique duplo em start.bat
-```
+O Claude move os arquivos para o lugar certo e inicia o dashboard automaticamente.
 
-No Mac/Linux:
-```bash
-node server.js
-```
-
-Acesse **http://localhost:4242** — o `start.bat` já abre automaticamente.
+Acesse **http://localhost:4242**
 
 ## Como usar
 
