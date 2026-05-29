@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Monitor · Virginia</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg:      #000000;
+  --bg2:     #010d00;
+  --surface: #020f02;
+  --surface2:#031503;
+  --border:  #0a3a0a;
+  --border2: #0f5a0f;
+  --green:   #00ff41;
+  --green2:  #00c832;
+  --green3:  #007a1f;
+  --green4:  #003d0f;
+  --dim:     #1a4a1a;
+  --text:    #00ff41;
+  --text2:   #3a8a3a;
+  --glow:    rgba(0,255,65,.15);
+  --glowbig: rgba(0,255,65,.25);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Share Tech Mono', monospace;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* Matrix rain */
+#matrix-canvas {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  z-index:0; pointer-events:none; opacity:.18;
+}
+
+/* Tudo sobre o canvas */
+header, .char-section, .stats-strip, .section, footer {
+  position:relative; z-index:1;
+}
+
+/* Header */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 32px;
+  border-bottom:1px solid var(--border2);
+  background:rgba(0,0,0,.85);
+  position:sticky; top:0; z-index:100;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 20px rgba(0,255,65,.08);
+}
+.logo h1 {
+  font-size:18px; font-weight:400; letter-spacing:.12em;
+  color:var(--green);
+  text-shadow:0 0 10px var(--green), 0 0 20px var(--green2);
+}
+.logo p { font-size:11px; color:var(--text2); margin-top:3px; letter-spacing:.08em; }
+.pulse-badge { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text2); }
+.pdot {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 6px var(--green);
+  animation:pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 6px var(--green)}
+  50%{opacity:.3;transform:scale(.6);box-shadow:none}
+}
+
+/* Personagem */
+.char-section {
+  display:flex; justify-content:center; padding:32px 0 0;
+  cursor:grab;
+}
+.char-section:active { cursor:grabbing; }
+
+#virginia-wrap {
+  position:relative;
+  user-select:none;
+  filter:drop-shadow(0 0 12px rgba(0,255,65,.3));
+}
+#virginia-wrap:hover {
+  filter:drop-shadow(0 0 20px rgba(0,255,65,.5));
+}
+
+/* Dica arraste */
+.drag-hint {
+  text-align:center; font-size:10px; color:var(--text2);
+  letter-spacing:.1em; margin-top:6px; opacity:.6;
+  animation:fadehint 4s ease-in-out forwards;
+}
+@keyframes fadehint { 0%{opacity:.6} 80%{opacity:.6} 100%{opacity:0} }
+
+/* Balão de fala */
+.meow-bubble {
+  position:absolute; bottom:230px; left:50%; transform:translateX(-50%) scale(0);
+  background:#001a00; border:1px solid var(--green);
+  color:var(--green); font-size:11px; letter-spacing:.08em;
+  padding:7px 14px; border-radius:12px; white-space:nowrap;
+  box-shadow:0 0 12px rgba(0,255,65,.3);
+  pointer-events:none;
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+  opacity:0; z-index:10;
+}
+.meow-bubble::after {
+  content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+  border:6px solid transparent; border-top-color:var(--green);
+}
+.meow-bubble.show { transform:translateX(-50%) scale(1); opacity:1; }
+
+/* Link do gato */
+#cat-link { display:inline-block; text-decoration:none; cursor:pointer; }
+
+/* Stats */
+.stats-strip {
+  display:flex; justify-content:center; padding:18px 32px 4px;
+  max-width:1200px; margin:0 auto; gap:0;
+}
+.stat-pill {
+  display:flex; flex-direction:column; align-items:center;
+  padding:10px 32px;
+  border:1px solid var(--border2);
+  background:var(--surface);
+  position:relative;
+}
+.stat-pill::before {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(180deg,rgba(0,255,65,.04),transparent);
+  pointer-events:none;
+}
+.stat-pill:first-child{border-radius:6px 0 0 6px}
+.stat-pill:last-child {border-radius:0 6px 6px 0}
+.sp-val {
+  font-size:28px; font-weight:400; line-height:1;
+  color:var(--green);
+  text-shadow:0 0 8px var(--green2);
+}
+.sp-lbl { font-size:10px; color:var(--text2); margin-top:4px; letter-spacing:.1em; text-transform:uppercase; }
+.sp-sleep .sp-val { color:#00c832; }
+
+/* Seções */
+.section { max-width:1200px; margin:0 auto; padding:22px 32px 8px; }
+.section-title {
+  display:flex; align-items:center; gap:10px;
+  font-size:12px; color:var(--text2);
+  text-transform:uppercase; letter-spacing:.12em; margin-bottom:14px;
+}
+.stitle-bar {
+  width:3px; height:14px; border-radius:2px;
+  background:var(--green);
+  box-shadow:0 0 6px var(--green);
+}
+.stitle-bar.sleep { background:#00c832; box-shadow:0 0 6px #00c832; }
+.stitle-hint { font-size:10px; color:var(--dim); font-weight:400; margin-left:4px; }
+
+/* Grid */
+.sessions-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(310px,1fr));
+  gap:12px;
+}
+
+.scard {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:8px; padding:15px;
+  transition:transform .2s, box-shadow .2s, border-color .2s;
+  position:relative; overflow:hidden;
+}
+.scard::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--green4),transparent);
+}
+.scard:hover {
+  transform:translateY(-2px);
+  border-color:var(--border2);
+  box-shadow:0 0 16px rgba(0,255,65,.12), 0 8px 24px rgba(0,0,0,.6);
+}
+.scard.s-busy {
+  border-color:rgba(0,255,65,.3);
+  box-shadow:0 0 12px rgba(0,255,65,.1);
+}
+.scard.s-busy::before { background:linear-gradient(90deg,transparent,rgba(0,255,65,.4),transparent); }
+.scard.s-sleeping { border-color:rgba(0,180,40,.2); opacity:.85; }
+.scard.s-sleeping:hover { opacity:1; border-color:rgba(0,255,65,.3); }
+
+.caccent { position:absolute; left:0;top:0;bottom:0; width:2px; border-radius:8px 0 0 8px; }
+
+.ch { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.pinfo { display:flex; align-items:center; gap:8px; }
+.pemoji { font-size:18px; line-height:1; }
+.pname  { font-weight:400; font-size:13px; color:var(--green); letter-spacing:.05em; }
+
+.sbadge {
+  display:flex; align-items:center; gap:5px;
+  padding:2px 8px; border-radius:3px;
+  font-size:10px; font-weight:400; text-transform:uppercase; letter-spacing:.1em;
+  border:1px solid;
+}
+.sbadge.busy     { color:var(--green);  border-color:rgba(0,255,65,.4);  background:rgba(0,255,65,.06); }
+.sbadge.idle     { color:var(--text2);  border-color:var(--border);       background:transparent; }
+.sbadge.shell    { color:#00e5ff;        border-color:rgba(0,229,255,.3);  background:rgba(0,229,255,.04); }
+.sbadge.sleeping { color:#00c832;        border-color:rgba(0,200,50,.3);   background:rgba(0,200,50,.05); }
+.sdot { width:5px; height:5px; border-radius:50%; background:currentColor; }
+.sbadge.busy     .sdot { animation:pulse 1.5s infinite; }
+.sbadge.sleeping .sdot { animation:pulse 3s   infinite; }
+
+.lmsg {
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:4px; padding:8px 10px; margin-bottom:8px;
+  font-size:11px; color:var(--text2); line-height:1.6;
+  max-height:66px; overflow:hidden; position:relative; word-break:break-word;
+}
+.lmsg::after {
+  content:''; position:absolute; bottom:0;left:0;right:0;height:20px;
+  background:linear-gradient(transparent,var(--surface2));
+}
+
+.cf { display:flex; align-items:center; justify-content:space-between; font-size:10px; color:var(--text2); }
+.cmeta { display:flex; align-items:center; gap:10px; }
+
+.btn-resume {
+  display:inline-flex; align-items:center; gap:4px;
+  background:transparent; color:var(--green);
+  border:1px solid var(--green); border-radius:3px;
+  padding:4px 10px; font-size:10px; font-weight:400; letter-spacing:.1em;
+  cursor:pointer; transition:all .2s;
+  font-family:'Share Tech Mono',monospace; text-transform:uppercase;
+}
+.btn-resume:hover {
+  background:rgba(0,255,65,.1);
+  box-shadow:0 0 10px rgba(0,255,65,.2);
+}
+.btn-resume.loading { opacity:.5; pointer-events:none; }
+
+/* ── Renomear inline ── */
+.pname-wrap { display:flex; align-items:center; gap:5px; }
+.pname.editable { cursor:pointer; border-bottom:1px dashed var(--text2); }
+.pname.editable:hover { color:#fff; border-color:var(--green); }
+.pname-input {
+  background:transparent; border:none; border-bottom:1px solid var(--green);
+  color:var(--green); font-family:'Share Tech Mono',monospace;
+  font-size:13px; letter-spacing:.05em; outline:none;
+  width:140px; padding:0;
+}
+.pname-hint { font-size:9px; color:var(--text2); opacity:.6; }
+
+/* ── Botão fechar ── */
+.btn-close {
+  position:absolute; top:8px; right:8px;
+  background:transparent; border:none;
+  color:var(--text2); font-size:11px;
+  cursor:pointer; padding:2px 5px; border-radius:3px;
+  line-height:1; transition:color .15s, background .15s;
+  font-family:'Share Tech Mono',monospace;
+}
+.btn-close:hover { color:#ff4444; background:rgba(255,50,50,.1); }
+
+.toast {
+  position:fixed; bottom:24px; right:24px;
+  background:var(--surface); border:1px solid rgba(0,255,65,.5);
+  color:var(--green); padding:12px 20px; border-radius:4px;
+  font-size:12px; letter-spacing:.08em;
+  box-shadow:0 0 20px rgba(0,255,65,.15);
+  transform:translateY(80px); opacity:0; transition:all .3s; z-index:999;
+}
+.toast.show { transform:translateY(0); opacity:1; }
+.empty-note { color:var(--text2); font-size:12px; padding:12px 0; letter-spacing:.05em; }
+
+footer {
+  text-align:center; padding:24px;
+  border-top:1px solid var(--border);
+  font-size:10px; color:var(--text2);
+  letter-spacing:.1em; margin-top:16px;
+}
+footer span { color:var(--green); text-shadow:0 0 6px var(--green); }
+
+/* Scanline overlay */
+body::after {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+}
+</style>
+</head>
+<body>
+
+<!-- Matrix rain canvas -->
+<canvas id="matrix-canvas"></canvas>
+
+<header>
+  <div class="logo">
+    <h1>[ SESSION_MONITOR ]</h1>
+    <p>VIRGINIA MARÇAL · CLAUDE CODE OPERATOR · MATRIX NODE</p>
+  </div>
+  <div class="pulse-badge">
+    <div class="pdot"></div>
+    <span id="last-refresh">CONNECTING...</span>
+  </div>
+</header>
+
+<!-- Virginia draggable -->
+<div class="char-section" id="char-section">
+  <div>
+    <div id="virginia-wrap">
+      <div class="meow-bubble" id="meow-bubble">clique 2x para me seguir no instagram 🐱</div>
+      <a id="cat-link" href="https://instagram.com/virginiamarcal" target="_blank" rel="noopener">
+      <svg id="virginia-svg" viewBox="0 0 160 220" fill="none" xmlns="http://www.w3.org/2000/svg"
+           width="160" height="220">
+
+        <!-- ══ GATINHO MATRIX ══ -->
+
+        <!-- Sombra no chão -->
+        <ellipse cx="80" cy="214" rx="30" ry="5" fill="rgba(0,255,65,.07)">
+          <animate attributeName="opacity" values=".07;.18;.07" dur="3s" repeatCount="indefinite"/>
+        </ellipse>
+
+        <!-- ── CASACO (back flaps voando) ── -->
+        <path d="M46 110 Q34 145 30 180 Q28 200 32 215 L52 215 Q50 192 52 170 Q54 148 58 128Z" fill="#0c0c0c" stroke="#222" stroke-width=".8"/>
+        <path d="M114 110 Q126 145 130 180 Q132 200 128 215 L108 215 Q110 192 108 170 Q106 148 102 128Z" fill="#0c0c0c" stroke="#222" stroke-width=".8"/>
+
+        <!-- ── PERNAS ── -->
+        <rect x="57" y="158" width="18" height="40" rx="6" fill="#0e0e0e" stroke="#1a1a1a" stroke-width=".5"/>
+        <rect x="85" y="158" width="18" height="40" rx="6" fill="#0e0e0e" stroke="#1a1a1a" stroke-width=".5"/>
+
+        <!-- ── PATINHAS (pés) ── -->
+        <!-- pé esquerdo -->
+        <ellipse cx="66" cy="200" rx="12" ry="7" fill="#e8761a"/>
+        <path d="M56 198 Q58 194 60 198" stroke="#d06010" stroke-width="1" fill="none"/>
+        <path d="M60 197 Q62 193 64 197" stroke="#d06010" stroke-width="1" fill="none"/>
+        <path d="M64 197 Q66 193 68 197" stroke="#d06010" stroke-width="1" fill="none"/>
+        <path d="M68 197 Q70 194 72 198" stroke="#d06010" stroke-width="1" fill="none"/>
+        <!-- pé direito -->
+        <ellipse cx="94" cy="200" rx="12" ry="7" fill="#e8761a"/>
+        <path d="M84 198 Q86 194 88 198" stroke="#d06010" stroke-width="1" fill="none"/>
+        <path d="M88 197 Q90 193 92 197" stroke="#d06010" stroke-width="1" fill="none"/>
+        <path d="M92 197 Q94 193 96 197" stroke="#d06010" stroke-width="1" fill="none"/>
+        <path d="M96 197 Q98 194 100 198" stroke="#d06010" stroke-width="1" fill="none"/>
+
+        <!-- ── CORPO do casaco ── -->
+        <path d="M46 108 Q42 118 40 135 Q38 155 40 175 L60 175 Q58 155 58 140 L58 125Z" fill="#0c0c0c" stroke="#222" stroke-width=".8"/>
+        <path d="M114 108 Q118 118 120 135 Q122 155 120 175 L100 175 Q102 155 102 140 L102 125Z" fill="#0c0c0c" stroke="#222" stroke-width=".8"/>
+
+        <!-- torso casaco central -->
+        <path d="M58 108 Q55 112 54 125 L54 168 Q60 175 80 175 Q100 175 106 168 L106 125 Q105 112 102 108 Q92 102 80 102 Q68 102 58 108Z" fill="#111" stroke="#1d1d1d" stroke-width=".5"/>
+        <!-- brilho couro -->
+        <path d="M60 110 Q62 120 62 135" stroke="rgba(255,255,255,.05)" stroke-width="2" fill="none"/>
+        <!-- lapelas -->
+        <path d="M58 108 L67 128 L74 125 L70 104Z" fill="#0e0e0e" stroke="#2a2a2a" stroke-width=".8"/>
+        <path d="M102 108 L93 128 L86 125 L90 104Z" fill="#0e0e0e" stroke="#2a2a2a" stroke-width=".8"/>
+        <!-- zip -->
+        <line x1="80" y1="125" x2="80" y2="170" stroke="#1a1a1a" stroke-width="1.5"/>
+        <rect x="78" y="132" width="4" height="3" rx="1" fill="#2a2a2a"/>
+        <!-- gola -->
+        <path d="M68 104 Q74 98 80 97 Q86 98 92 104 L88 112 Q84 107 80 106 Q76 107 72 112Z" fill="#0d0d0d" stroke="#2a2a2a" stroke-width=".8"/>
+
+        <!-- ── BRAÇO ESQUERDO (patinha no bolso) ── -->
+        <path d="M54 120 Q46 130 44 148 L52 150 Q54 135 58 126Z" fill="#0d0d0d" stroke="#1d1d1d" stroke-width=".5"/>
+        <!-- patinha esquerda -->
+        <ellipse cx="48" cy="153" rx="9" ry="7" fill="#e8761a"/>
+        <path d="M41 151 Q43 147 46 151" stroke="#c05800" stroke-width="1.2" fill="none"/>
+        <path d="M46 150 Q48 146 50 150" stroke="#c05800" stroke-width="1.2" fill="none"/>
+        <path d="M50 150 Q52 147 54 151" stroke="#c05800" stroke-width="1.2" fill="none"/>
+
+        <!-- ── BRAÇO DIREITO (segurando tablet) ── -->
+        <path d="M106 120 Q114 130 116 148 L108 150 Q106 135 102 126Z" fill="#0d0d0d" stroke="#1d1d1d" stroke-width=".5"/>
+        <!-- patinha direita -->
+        <ellipse cx="112" cy="153" rx="9" ry="7" fill="#e8761a"/>
+        <path d="M105 151 Q107 147 110 151" stroke="#c05800" stroke-width="1.2" fill="none"/>
+        <path d="M110 150 Q112 146 114 150" stroke="#c05800" stroke-width="1.2" fill="none"/>
+        <path d="M114 150 Q116 147 118 151" stroke="#c05800" stroke-width="1.2" fill="none"/>
+
+        <!-- ── TABLET HOLOGRÁFICO ── -->
+        <rect x="116" y="130" width="34" height="42" rx="3" fill="rgba(0,255,65,.04)" stroke="rgba(0,255,65,.5)" stroke-width=".8"/>
+        <text x="118" y="141" font-family="monospace" font-size="3.5" fill="rgba(0,255,65,.95)">CLAUDE CODE</text>
+        <text x="118" y="148" font-family="monospace" font-size="2.8" fill="rgba(0,255,65,.6)">init(ai_engine)</text>
+        <text x="118" y="154" font-family="monospace" font-size="2.8" fill="rgba(0,200,50,.5)">sessions: live</text>
+        <text x="118" y="160" font-family="monospace" font-size="2.8" fill="rgba(0,255,65,.4)">deploy --prod</text>
+        <text x="118" y="166" font-family="monospace" font-size="2.8" fill="rgba(0,255,65,.7)">▲ ok</text>
+        <rect x="118" y="168" width="3" height="4" fill="rgba(0,255,65,.9)">
+          <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="116" y="130" width="34" height="42" rx="3" fill="none" stroke="rgba(0,255,65,.25)" stroke-width="1.2">
+          <animate attributeName="stroke-opacity" values=".25;.7;.25" dur="2s" repeatCount="indefinite"/>
+        </rect>
+
+        <!-- RABO (curvo, saindo da lateral do casaco) -->
+        <path d="M106 160 Q118 155 124 145 Q130 135 122 128 Q116 124 112 130 Q118 132 116 140 Q114 148 104 152Z"
+              fill="#e8761a" stroke="#c05800" stroke-width=".8"/>
+        <!-- listras do rabo -->
+        <path d="M110 155 Q118 150 122 142" stroke="#c05800" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+        <path d="M113 152 Q120 147 123 140" stroke="#d06800" stroke-width=".8" fill="none" stroke-linecap="round"/>
+
+        <!-- ══ CABEÇA DO GATO ══ -->
+
+        <!-- base da cabeça — redonda laranja -->
+        <circle cx="80" cy="62" r="34" fill="#e8761a"/>
+        <!-- volume / highlight -->
+        <ellipse cx="74" cy="54" rx="16" ry="14" fill="rgba(255,200,100,.2)"/>
+        <!-- sombra queixo -->
+        <ellipse cx="80" cy="86" rx="20" ry="8" fill="rgba(0,0,0,.1)"/>
+
+        <!-- ORELHAS DE GATO -->
+        <!-- orelha esquerda -->
+        <path d="M50 44 L58 28 L72 42Z" fill="#e8761a"/>
+        <path d="M54 42 L60 30 L70 42Z" fill="#f0a060" stroke="#e8761a" stroke-width=".5"/>
+        <!-- orelha direita -->
+        <path d="M110 44 L102 28 L88 42Z" fill="#e8761a"/>
+        <path d="M106 42 L100 30 L90 42Z" fill="#f0a060" stroke="#e8761a" stroke-width=".5"/>
+
+        <!-- PELOS brancos na bochecha -->
+        <path d="M50 70 Q55 69 58 72" stroke="rgba(255,255,255,.5)" stroke-width=".8" fill="none"/>
+        <path d="M50 74 Q55 73 57 76" stroke="rgba(255,255,255,.4)" stroke-width=".8" fill="none"/>
+        <path d="M110 70 Q105 69 102 72" stroke="rgba(255,255,255,.5)" stroke-width=".8" fill="none"/>
+        <path d="M110 74 Q105 73 103 76" stroke="rgba(255,255,255,.4)" stroke-width=".8" fill="none"/>
+
+        <!-- LISTRAS na testa (tabby) -->
+        <path d="M72 38 Q80 35 88 38" stroke="#c05800" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+        <path d="M74 43 Q80 40 86 43" stroke="#c05800" stroke-width="1" fill="none" stroke-linecap="round"/>
+
+        <!-- OLHOS — verdes matrix grandes e expressivos -->
+        <!-- olho esquerdo -->
+        <ellipse cx="66" cy="63" rx="11" ry="10" fill="#001a00"/>
+        <ellipse cx="66" cy="63" rx="9" ry="8.5" fill="#00cc44"/>
+        <ellipse cx="66" cy="63" rx="5" ry="7" fill="#001000"/>
+        <!-- pupila vertical de gato -->
+        <ellipse cx="66" cy="63" rx="3" ry="6.5" fill="#000a00"/>
+        <!-- brilho olho -->
+        <ellipse cx="63" cy="59" rx="2" ry="1.5" fill="rgba(255,255,255,.7)"/>
+        <ellipse cx="70" cy="66" rx="1" ry=".8" fill="rgba(255,255,255,.35)"/>
+        <!-- glow verde -->
+        <ellipse cx="66" cy="63" rx="10" ry="9.5" fill="none" stroke="rgba(0,255,65,.3)" stroke-width="1">
+          <animate attributeName="stroke-opacity" values=".3;.7;.3" dur="2.5s" repeatCount="indefinite"/>
+        </ellipse>
+
+        <!-- olho direito -->
+        <ellipse cx="94" cy="63" rx="11" ry="10" fill="#001a00"/>
+        <ellipse cx="94" cy="63" rx="9" ry="8.5" fill="#00cc44"/>
+        <ellipse cx="94" cy="63" rx="5" ry="7" fill="#001000"/>
+        <ellipse cx="94" cy="63" rx="3" ry="6.5" fill="#000a00"/>
+        <ellipse cx="91" cy="59" rx="2" ry="1.5" fill="rgba(255,255,255,.7)"/>
+        <ellipse cx="98" cy="66" rx="1" ry=".8" fill="rgba(255,255,255,.35)"/>
+        <ellipse cx="94" cy="63" rx="10" ry="9.5" fill="none" stroke="rgba(0,255,65,.3)" stroke-width="1">
+          <animate attributeName="stroke-opacity" values=".3;.7;.3" dur="2.5s" begin=".4s" repeatCount="indefinite"/>
+        </ellipse>
+
+        <!-- NARIZINHO -->
+        <path d="M77 76 Q80 74 83 76 L81.5 78 Q80 79 78.5 78Z" fill="#c05050"/>
+        <!-- filtro nasal -->
+        <path d="M77 76 Q80 77.5 83 76" stroke="#a03030" stroke-width=".6" fill="none"/>
+
+        <!-- BOCA de gato (W shape) -->
+        <path d="M78 79 Q79 82 80 80 Q81 82 82 79" stroke="#804040" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+        <path d="M76 79 Q78 80.5 80 80 Q82 80.5 84 79" stroke="#804040" stroke-width=".8" fill="none"/>
+
+        <!-- BIGODES -->
+        <!-- esquerda -->
+        <line x1="46" y1="73" x2="72" y2="76" stroke="rgba(255,255,255,.6)" stroke-width=".9"/>
+        <line x1="46" y1="78" x2="72" y2="78" stroke="rgba(255,255,255,.5)" stroke-width=".9"/>
+        <line x1="48" y1="83" x2="72" y2="80" stroke="rgba(255,255,255,.4)" stroke-width=".8"/>
+        <!-- direita -->
+        <line x1="88" y1="76" x2="114" y2="73" stroke="rgba(255,255,255,.6)" stroke-width=".9"/>
+        <line x1="88" y1="78" x2="114" y2="78" stroke="rgba(255,255,255,.5)" stroke-width=".9"/>
+        <line x1="88" y1="80" x2="112" y2="83" stroke="rgba(255,255,255,.4)" stroke-width=".8"/>
+
+        <!-- COLEIRA verde matrix com tag ✦ -->
+        <rect x="62" y="90" width="36" height="8" rx="4" fill="#003300" stroke="#00aa33" stroke-width="1"/>
+        <text x="74" y="97" font-family="monospace" font-size="5" fill="#00ff41">✦ V ✦</text>
+
+        <!-- Matrix symbols flutuando -->
+        <g font-family="monospace" font-size="7" fill="rgba(0,255,65,.3)">
+          <text x="4" y="55">01<animate attributeName="opacity" values=".3;.8;.3" dur="2s" repeatCount="indefinite"/></text>
+          <text x="138" y="50">λ<animate attributeName="opacity" values=".1;.6;.1" dur="2.5s" repeatCount="indefinite"/></text>
+          <text x="2" y="140">∑<animate attributeName="opacity" values=".2;.6;.2" dur="1.8s" repeatCount="indefinite"/></text>
+          <text x="6" y="185">ψ<animate attributeName="opacity" values=".25;.6;.25" dur="1.5s" repeatCount="indefinite"/></text>
+        </g>
+      </svg>
+      </a>
+    </div>
+    <p class="drag-hint">[ arraste para mover ]</p>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-strip">
+  <div class="stat-pill sp-busy" ><div class="sp-val" id="c-busy" >–</div><div class="sp-lbl">⚡ ATIVAS</div></div>
+  <div class="stat-pill sp-total"><div class="sp-val" id="c-total">–</div><div class="sp-lbl">// TOTAL</div></div>
+  <div class="stat-pill sp-idle" ><div class="sp-val" id="c-idle" >–</div><div class="sp-lbl">~ OCIOSAS</div></div>
+  <div class="stat-pill sp-sleep"><div class="sp-val" id="c-sleep">–</div><div class="sp-lbl">zZ REPOUSO</div></div>
+</div>
+
+<div class="section">
+  <div class="section-title">
+    <div class="stitle-bar"></div>
+    SESSÕES_ATIVAS
+  </div>
+  <div class="sessions-grid" id="grid-active">
+    <p class="empty-note">// LOADING...</p>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">
+    <div class="stitle-bar sleep"></div>
+    PROJETOS_EM_REPOUSO
+    <span class="stitle-hint">// clique em RETOMAR para continuar de onde parou</span>
+  </div>
+  <div class="sessions-grid" id="grid-sleeping">
+    <p class="empty-note">// NENHUM PROJETO EM REPOUSO</p>
+  </div>
+</div>
+
+<footer>
+  <span>[ SESSION_MONITOR ]</span> · VIRGINIA MARÇAL · CLAUDE CODE OPERATOR · ATUALIZA A CADA 5S
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Miado + balão ────────────────────────────────────────────────────────────
+(function(){
+  var link   = document.getElementById('cat-link');
+  var bubble = document.getElementById('meow-bubble');
+  var timer  = null;
+
+  function meow(){
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    // frequência sobe e desce como um miado
+    osc.frequency.setValueAtTime(520, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(780, ctx.currentTime + 0.12);
+    osc.frequency.linearRampToValueAtTime(480, ctx.currentTime + 0.35);
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.38);
+    osc.onended = function(){ ctx.close(); };
+  }
+
+  link.addEventListener('click', function(e){
+    e.preventDefault();
+    meow();
+    bubble.classList.add('show');
+    clearTimeout(timer);
+    timer = setTimeout(function(){ bubble.classList.remove('show'); }, 2500);
+  });
+
+  link.addEventListener('dblclick', function(e){
+    e.preventDefault();
+    window.open('https://instagram.com/virginiamarcal','_blank','noopener');
+  });
+
+  // duplo toque no mobile
+  var lastTap = 0;
+  link.addEventListener('touchend', function(e){
+    var now = Date.now();
+    if(now - lastTap < 350){
+      e.preventDefault();
+      window.open('https://instagram.com/virginiamarcal','_blank','noopener');
+    }
+    lastTap = now;
+  });
+})();
+
+// ── Matrix Rain ──────────────────────────────────────────────────────────────
+(function(){
+  var canvas = document.getElementById('matrix-canvas');
+  var ctx = canvas.getContext('2d');
+  var chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789ABCDEF∑λψΩ{}[]<>01';
+  var cols, drops;
+  var fontSize = 13;
+
+  function resize(){
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols  = Math.floor(canvas.width / fontSize);
+    drops = new Array(cols).fill(1);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw(){
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = fontSize + 'px monospace';
+    for(var i=0; i<cols; i++){
+      var c = chars[Math.floor(Math.random()*chars.length)];
+      ctx.fillStyle = (Math.random()>.97) ? '#ffffff' : '#00ff41';
+      ctx.fillText(c, i*fontSize, drops[i]*fontSize);
+      if(drops[i]*fontSize > canvas.height && Math.random()>.975) drops[i]=0;
+      drops[i]++;
+    }
+  }
+  setInterval(draw, 45);
+})();
+
+// ── Drag ─────────────────────────────────────────────────────────────────────
+(function(){
+  var wrap = document.getElementById('virginia-wrap');
+  var section = document.getElementById('char-section');
+  var isDragging = false, startX, startY, origLeft, origTop;
+  var posX = 0, posY = 0;
+
+  wrap.style.position = 'relative';
+  wrap.style.display  = 'inline-block';
+
+  wrap.addEventListener('mousedown', function(e){
+    isDragging = true;
+    startX = e.clientX - posX;
+    startY = e.clientY - posY;
+    wrap.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e){
+    if(!isDragging) return;
+    posX = e.clientX - startX;
+    posY = e.clientY - startY;
+    wrap.style.transform = 'translate(' + posX + 'px,' + posY + 'px)';
+  });
+
+  document.addEventListener('mouseup', function(){
+    isDragging = false;
+    wrap.style.cursor = 'grab';
+  });
+
+  // touch support
+  wrap.addEventListener('touchstart', function(e){
+    var t = e.touches[0];
+    isDragging = true;
+    startX = t.clientX - posX;
+    startY = t.clientY - posY;
+    e.preventDefault();
+  }, {passive:false});
+
+  document.addEventListener('touchmove', function(e){
+    if(!isDragging) return;
+    var t = e.touches[0];
+    posX = t.clientX - startX;
+    posY = t.clientY - startY;
+    wrap.style.transform = 'translate(' + posX + 'px,' + posY + 'px)';
+  });
+
+  document.addEventListener('touchend', function(){
+    isDragging = false;
+  });
+})();
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+var STATUS_ICONS  = { busy:'⚡', idle:'~', shell:'$', sleeping:'zZ' };
+var STATUS_LABELS = { busy:'BUSY', idle:'IDLE', shell:'SHELL', sleeping:'SLEEP' };
+
+function timeAgo(ms) {
+  if(!ms) return '–';
+  var m = Math.round((Date.now()-ms)/60000);
+  if(m<1)    return 'AGORA';
+  if(m<60)   return m+'MIN';
+  if(m<1440) return Math.round(m/60)+'H';
+  return Math.round(m/1440)+'D';
+}
+
+function badge(status){
+  return '<div class="sbadge '+status+'"><div class="sdot"></div>'
+       + (STATUS_ICONS[status]||'') + ' ' + (STATUS_LABELS[status]||status)
+       + '</div>';
+}
+
+// sessões descartadas manualmente
+var dismissed = {};
+try { dismissed = JSON.parse(localStorage.getItem('sm_dismissed') || '{}'); } catch{}
+
+function dismissCard(sessionId, btn){
+  dismissed[sessionId] = true;
+  localStorage.setItem('sm_dismissed', JSON.stringify(dismissed));
+  var card = document.getElementById('card-'+sessionId);
+  if(card){ card.style.transition='opacity .3s'; card.style.opacity='0'; setTimeout(function(){card.remove();},300); }
+  // avisa o servidor pra remover dos dormindo também
+  fetch('/api/dismiss/'+sessionId, {method:'POST'}).catch(function(){});
+}
+
+// nomes customizados salvos localmente
+var customNames = {};
+try { customNames = JSON.parse(localStorage.getItem('sm_custom_names') || '{}'); } catch{}
+
+function saveCustomName(sessionId, name){
+  customNames[sessionId] = name;
+  localStorage.setItem('sm_custom_names', JSON.stringify(customNames));
+  fetch('/api/rename', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({sessionId: sessionId, name: name})
+  }).catch(function(){});
+}
+
+function startRename(sessionId, currentLabel, spanEl){
+  var input = document.createElement('input');
+  input.className = 'pname-input';
+  input.value = currentLabel;
+  input.title = 'Enter para salvar, Esc para cancelar';
+  spanEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  function commit(){
+    var val = input.value.trim();
+    if(val){
+      saveCustomName(sessionId, val);
+      showToast('// NOME SALVO: ' + val.toUpperCase());
+    }
+    refresh();
+  }
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if(e.key === 'Escape') { refresh(); }
+  });
+  input.addEventListener('blur', function(){ commit(); });
+}
+
+function card(s, isSleeping){
+  var msg = s.lastMessage
+    ? s.lastMessage.replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    : '<span style="opacity:.4">// sem mensagens</span>';
+
+  var action = isSleeping
+    ? '<button class="btn-resume" onclick="resume(\''+s.sessionId+'\',this)">▶ RETOMAR</button>'
+    : '<span>'+timeAgo(s.updatedAt)+'</span>';
+
+  var closeBtn = '<button class="btn-close" title="Remover card" onclick="dismissCard(\''+s.sessionId+'\',this)">✕</button>';
+
+  // usar nome customizado se existir
+  var label = (customNames[s.sessionId] || s.project.label).toUpperCase();
+  var isGeneric = !customNames[s.sessionId] && s.project.label === 'Sessão Geral';
+  var nameHtml = isGeneric
+    ? '<span class="pname editable" title="Clique para nomear" onclick="startRename(\''+s.sessionId+'\',\''+label+'\',this)">'+label+' ✎</span>'
+    : '<span class="pname editable" title="Clique para renomear" onclick="startRename(\''+s.sessionId+'\',\''+label+'\',this)">'+label+'</span>';
+
+  return '<div class="scard s-'+s.status+'" id="card-'+s.sessionId+'">'
+    +'<div class="caccent" style="background:'+s.project.color+'"></div>'
+    + closeBtn
+    +'<div class="ch">'
+    +  '<div class="pinfo">'
+    +    '<span class="pemoji">'+s.project.emoji+'</span>'
+    +    '<div class="pname-wrap">'
+    +      nameHtml
+    +      (isGeneric ? '<span class="pname-hint">← clique</span>' : '')
+    +    '</div>'
+    +  '</div>'
+    +  badge(s.status)
+    +'</div>'
+    +'<div class="lmsg">'+msg+'</div>'
+    +'<div class="cf">'
+    +  '<div class="cmeta">'
+    +    '<span>MSG:'+s.messageCount+'</span>'
+    +    '<span style="opacity:.4">ID:'+s.sessionId.slice(0,8)+'</span>'
+    +  '</div>'
+    +  action
+    +'</div>'
+    +'</div>';
+}
+
+function resume(sessionId, btn){
+  btn.classList.add('loading');
+  btn.textContent = '>> ABRINDO...';
+  fetch('/api/resume/'+sessionId,{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){ showToast('// TERMINAL ABERTO · CONTINUE DE ONDE PAROU'); setTimeout(refresh,1500); }
+      else{ btn.textContent='ERR'; btn.classList.remove('loading'); }
+    })
+    .catch(function(){btn.textContent='ERR';btn.classList.remove('loading');});
+}
+
+function showToast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show');},4000);
+}
+
+function render(data){
+  var active   = (data.active   || []).filter(function(s){ return !dismissed[s.sessionId]; });
+  var sleeping = (data.sleeping || []).filter(function(s){ return !dismissed[s.sessionId]; });
+  var busy = active.filter(function(s){return s.status==='busy';}).length;
+
+  document.getElementById('c-busy').textContent  = busy;
+  document.getElementById('c-total').textContent = active.length;
+  document.getElementById('c-idle').textContent  = active.length - busy;
+  document.getElementById('c-sleep').textContent = sleeping.length;
+
+  var ga = document.getElementById('grid-active');
+  ga.innerHTML = active.length
+    ? active.map(function(s){return card(s,false);}).join('')
+    : '<p class="empty-note">// NENHUMA SESSÃO ATIVA</p>';
+
+  var gs = document.getElementById('grid-sleeping');
+  gs.innerHTML = sleeping.length
+    ? sleeping.map(function(s){return card(s,true);}).join('')
+    : '<p class="empty-note">// NENHUM PROJETO EM REPOUSO</p>';
+}
+
+function refresh(){
+  fetch('/api/sessions')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      render(d);
+      document.getElementById('last-refresh').textContent =
+        'SYNC: '+new Date().toLocaleTimeString('pt-BR');
+    })
+    .catch(function(){
+      document.getElementById('last-refresh').textContent='// CONNECTION ERROR';
+    });
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
