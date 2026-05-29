@@ -4,7 +4,6 @@ const path = require('path');
 const os   = require('os');
 const { execSync } = require('child_process');
 const https  = require('https');
-const https  = require('https');
 
 const PORT         = 4242;
 const CLAUDE_DIR   = path.join(os.homedir(), '.claude');
@@ -13,29 +12,6 @@ const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const SLEEPING_FILE= path.join(CLAUDE_DIR, 'dashboard', 'sleeping.json');
 const NAMES_FILE   = path.join(CLAUDE_DIR, 'dashboard', 'custom_names.json');
 const HTML_FILE    = path.join(CLAUDE_DIR, 'dashboard', 'dashboard.html');
-const VERSION_FILE = path.join(CLAUDE_DIR, 'dashboard', 'version.json');
-const VERSION_URL  = 'https://raw.githubusercontent.com/virginiamarcal/session-monitor/master/version.json';
-
-let updateAvailable = null;
-
-function checkForUpdate() {
-  try {
-    const local = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8')).version;
-    https.get(VERSION_URL, (res) => {
-      let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => {
-        try {
-          const remote = JSON.parse(data).version;
-          if (remote !== local) {
-            updateAvailable = { current: local, latest: remote, url: 'https://github.com/virginiamarcal/session-monitor' };
-            console.log('  [!] Atualizacao disponivel: ' + local + ' -> ' + remote);
-          }
-        } catch {}
-      });
-    }).on('error', () => {});
-  } catch {}
-}
 const VERSION_FILE = path.join(CLAUDE_DIR, 'dashboard', 'version.json');
 const VERSION_URL  = 'https://raw.githubusercontent.com/virginiamarcal/session-monitor/master/version.json';
 
@@ -290,11 +266,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url === '/api/version' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ update: updateAvailable }));
-    return;
-  }
 
   // Serve o dashboard HTML
   try {
