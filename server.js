@@ -29,6 +29,8 @@ function checkForUpdate() {
           if (remote !== local) {
             updateAvailable = { current: local, latest: remote, url: 'https://github.com/virginiamarcal/session-monitor' };
             console.log('  [!] Atualizacao disponivel: ' + local + ' -> ' + remote);
+          } else {
+            updateAvailable = null;
           }
         } catch {}
       });
@@ -279,6 +281,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   checkForUpdate();
+  // Re-checa o GitHub periodicamente (a cada 1h) — antes so checava no boot,
+  // entao quem deixava o PC ligado nunca via o banner de nova versao.
+  setInterval(checkForUpdate, 60 * 60 * 1000);
   console.log('');
   console.log('  ╔══════════════════════════════════╗');
   console.log('  ║   ✦ Claude Code Session Monitor  ║');
