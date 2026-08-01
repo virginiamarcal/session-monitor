@@ -684,6 +684,12 @@ function timeAgo(ms) {
   return Math.round(m/1440)+'D';
 }
 
+function dateStamp(ms){
+  if(!ms) return '';
+  var d = new Date(ms), p = function(n){ return (n<10?'0':'')+n; };
+  return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+
 function badge(status){
   return '<div class="sbadge '+status+'"><div class="sdot"></div>'
        + (STATUS_ICONS[status]||'') + ' ' + (STATUS_LABELS[status]||status)
@@ -777,6 +783,7 @@ function card(s, isSleeping){
     +  '<div class="cmeta">'
     +    '<span>MSG:'+s.messageCount+'</span>'
     +    '<span style="opacity:.4">ID:'+s.sessionId.slice(0,8)+'</span>'
+    +    '<span style="opacity:.6" title="Ultima atividade">'+dateStamp(s.updatedAt)+' ('+timeAgo(s.updatedAt)+')</span>'
     +  '</div>'
     +  action
     +'</div>'

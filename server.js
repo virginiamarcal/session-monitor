@@ -15,6 +15,9 @@ const HTML_FILE    = path.join(CLAUDE_DIR, 'dashboard', 'dashboard.html');
 const VERSION_FILE = path.join(CLAUDE_DIR, 'dashboard', 'version.json');
 const VERSION_URL  = 'https://raw.githubusercontent.com/virginiamarcal/session-monitor/master/version.json';
 
+// Sessoes dormindo com mais de 90 dias sem atualizacao sao descartadas.
+const SLEEP_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
 let updateAvailable = null;
 
 function checkForUpdate() {
@@ -78,8 +81,15 @@ function loadSleeping() {
   try { return JSON.parse(fs.readFileSync(SLEEPING_FILE, 'utf8')); }
   catch { return {}; }
 }
+// Guarda o ultimo conteudo gravado para nao reescrever o arquivo a cada polling.
+let lastSleepingJson = null;
 function saveSleeping(data) {
-  try { fs.writeFileSync(SLEEPING_FILE, JSON.stringify(data, null, 2)); } catch {}
+  const json = JSON.stringify(data, null, 2);
+  if (json === lastSleepingJson) return;
+  try {
+    fs.writeFileSync(SLEEPING_FILE, json);
+    lastSleepingJson = json;
+  } catch {}
 }
 
 // ─── Ler arquivos de sessão ───────────────────────────────────────────────────
@@ -152,6 +162,12 @@ function buildData() {
     }
   }
 
+  // Descarta sessoes dormindo paradas ha mais de 90 dias.
+  const cutoff = now - SLEEP_TTL_MS;
+  for (const sid of Object.keys(newSleep)) {
+    if ((newSleep[sid].updatedAt || 0) < cutoff) delete newSleep[sid];
+  }
+
   saveSleeping(newSleep);
 
   const statusOrder = { busy: 0, shell: 1, idle: 2 };
@@ -166,12 +182,13 @@ function buildData() {
   return { active, sleeping: sleepingArr };
 }
 
-// ─── Abre terminal via .bat temporário (evita quoting quebrado no Windows) ────
+// ─── Abre no Windows Terminal (wt) com perfil PowerShell, igual ao terminal ────
+// ─── que a usuária usa. Usa .ps1 temporário p/ evitar quoting quebrado. ───────
 function openTerminal(cwd, claudeArgs) {
-  const batPath = path.join(os.tmpdir(), `claude_session_${Date.now()}.bat`);
-  const batContent = `@echo off\ncd /d "${cwd}"\nclaude ${claudeArgs}\n`;
-  fs.writeFileSync(batPath, batContent, 'utf8');
-  execSync(`start "" cmd.exe /k "${batPath}"`, { shell: 'cmd.exe' });
+  const ps1Path = path.join(os.tmpdir(), `claude_session_${Date.now()}.ps1`);
+  const ps1Content = `Set-Location -LiteralPath "${cwd}"\nclaude ${claudeArgs}\n`;
+  fs.writeFileSync(ps1Path, ps1Content, 'utf8');
+  execSync(`start "" wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File "${ps1Path}"`, { shell: 'cmd.exe' });
 }
 
 // ─── Retomar sessão específica ────────────────────────────────────────────────
