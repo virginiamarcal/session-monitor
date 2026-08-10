@@ -8,15 +8,24 @@ const https  = require('https');
 const PORT         = 4242;
 const CLAUDE_DIR   = path.join(os.homedir(), '.claude');
 const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
+const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const SLEEPING_FILE= path.join(CLAUDE_DIR, 'dashboard', 'sleeping.json');
 const NAMES_FILE   = path.join(CLAUDE_DIR, 'dashboard', 'custom_names.json');
+const DISMISS_FILE = path.join(CLAUDE_DIR, 'dashboard', 'dismissed.json');
+const CACHE_FILE   = path.join(CLAUDE_DIR, 'dashboard', 'transcripts_cache.json');
 const HTML_FILE    = path.join(CLAUDE_DIR, 'dashboard', 'dashboard.html');
 const VERSION_FILE = path.join(CLAUDE_DIR, 'dashboard', 'version.json');
 const VERSION_URL  = 'https://raw.githubusercontent.com/virginiamarcal/session-monitor/master/version.json';
 
 // Sessoes dormindo com mais de 90 dias sem atualizacao sao descartadas.
 const SLEEP_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+// Varredura automatica. Sem isso o monitor so enxergava sessoes mortas no
+// momento em que alguem abria o dashboard no navegador — e numa queda de
+// energia o Claude Code apaga os arquivos de sessions/ antes disso, levando
+// junto qualquer rastro de que aquelas sessoes existiram.
+const SCAN_INTERVAL_MS = 10 * 1000;
 
 let updateAvailable = null;
 
@@ -128,42 +137,176 @@ function readHistory() {
   return bySession;
 }
 
+// ─── Sessoes dispensadas pela usuaria ─────────────────────────────────────────
+// A varredura automatica reencontra tudo que existe em projects/, entao sem
+// esta lista uma sessao dispensada voltaria a aparecer no ciclo seguinte.
+function loadDismissed() {
+  try { return JSON.parse(fs.readFileSync(DISMISS_FILE, 'utf8')); }
+  catch { return {}; }
+}
+function saveDismissed(data) {
+  try { fs.writeFileSync(DISMISS_FILE, JSON.stringify(data, null, 2)); } catch {}
+}
+
+// ─── Transcripts: a fonte que sobrevive a queda de energia ────────────────────
+// O Claude Code grava cada conversa em projects/<pasta>/<sessionId>.jsonl e so
+// remove o arquivo quando a usuaria manda. Diferente de sessions/<pid>.json,
+// que e limpo assim que o processo morre.
+//
+// Ler os ~100 MB de transcripts a cada varredura seria desperdicio, entao o
+// resultado por arquivo fica em cache no disco, chaveado por tamanho + mtime.
+// Arquivo que nao mudou nao e reaberto — na pratica so a sessao ativa e relida.
+let cacheTranscripts = null;
+let cacheSujo = false;
+
+function loadCacheTranscripts() {
+  if (cacheTranscripts) return cacheTranscripts;
+  try { cacheTranscripts = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); }
+  catch { cacheTranscripts = {}; }
+  return cacheTranscripts;
+}
+function flushCacheTranscripts() {
+  if (!cacheSujo) return;
+  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cacheTranscripts)); cacheSujo = false; } catch {}
+}
+
+// Extrai de um transcript so o que o painel precisa para montar o card.
+function lerTranscript(arquivo) {
+  const resumo = { cwd: null, title: null, lastPrompt: null, messageCount: 0 };
+  let conteudo;
+  try { conteudo = fs.readFileSync(arquivo, 'utf8'); } catch { return resumo; }
+
+  for (const linha of conteudo.split('\n')) {
+    if (!linha.trim()) continue;
+    let o;
+    try { o = JSON.parse(linha); } catch { continue; }
+
+    // O primeiro cwd e a pasta onde a sessao nasceu — a que serve para retomar.
+    // Linhas posteriores podem apontar para scratchpad e outras pastas de passagem.
+    if (!resumo.cwd && o.cwd) resumo.cwd = o.cwd;
+    if (o.type === 'ai-title'    && o.aiTitle)    resumo.title      = o.aiTitle;
+    if (o.type === 'last-prompt' && o.lastPrompt) resumo.lastPrompt = o.lastPrompt;
+    if (o.type === 'last-prompt') resumo.messageCount++;
+  }
+  return resumo;
+}
+
+function readTranscripts(cutoff) {
+  const cache = loadCacheTranscripts();
+  const achados = {};
+  const vistos = new Set();
+
+  let pastas;
+  try { pastas = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true }); } catch { return achados; }
+
+  for (const pasta of pastas) {
+    if (!pasta.isDirectory() || pasta.name === 'subagents') continue;
+    const dir = path.join(PROJECTS_DIR, pasta.name);
+
+    let arquivos;
+    try { arquivos = fs.readdirSync(dir); } catch { continue; }
+
+    for (const nome of arquivos) {
+      if (!nome.endsWith('.jsonl')) continue;
+      const arquivo = path.join(dir, nome);
+
+      let st;
+      try { st = fs.statSync(arquivo); } catch { continue; }
+      if (st.mtimeMs < cutoff) continue; // fora do TTL: nem vale abrir
+
+      const chave  = arquivo;
+      const marca  = st.size + ':' + Math.round(st.mtimeMs);
+      vistos.add(chave);
+
+      let dados = cache[chave];
+      if (!dados || dados.marca !== marca) {
+        dados = Object.assign({ marca }, lerTranscript(arquivo));
+        cache[chave] = dados;
+        cacheSujo = true;
+      }
+
+      achados[nome.replace(/\.jsonl$/, '')] = {
+        cwd:          dados.cwd,
+        title:        dados.title,
+        lastPrompt:   dados.lastPrompt,
+        messageCount: dados.messageCount,
+        updatedAt:    Math.round(st.mtimeMs),
+      };
+    }
+  }
+
+  // Descarta do cache os transcripts que sairam do TTL ou foram apagados.
+  for (const chave of Object.keys(cache)) {
+    if (!vistos.has(chave)) { delete cache[chave]; cacheSujo = true; }
+  }
+  flushCacheTranscripts();
+  return achados;
+}
+
 // ─── Construir dados da API ───────────────────────────────────────────────────
 function buildData() {
+  const now         = Date.now();
+  const cutoff      = now - SLEEP_TTL_MS;
   const sessions    = readSessions();
   const history     = readHistory();
+  const transcripts = readTranscripts(cutoff);
   const sleeping    = loadSleeping();
   const customNames = loadCustomNames();
-  const now         = Date.now();
+  const dismissed   = loadDismissed();
   const active   = [];
   const newSleep = Object.assign({}, sleeping);
 
+  // Monta o card de uma sessao juntando o que cada fonte sabe de melhor:
+  // sessions/ da o estado ao vivo, o transcript da titulo/pasta/ultimo prompt,
+  // e o history serve de reserva para sessoes antigas sem transcript.
+  function montar(sessionId, s, t) {
+    const msgs     = (history[sessionId] || []).map(m => m.text);
+    const inferred = inferProject(msgs.concat(t && t.title ? [t.title] : []));
+
+    if (t && t.title) inferred.label = t.title;
+    if (customNames[sessionId]) inferred.label = customNames[sessionId];
+
+    const ultima = (t && t.lastPrompt) || msgs[msgs.length - 1] || '';
+    const total  = Math.max((t && t.messageCount) || 0, msgs.length);
+
+    return {
+      sessionId,
+      pid:          s ? s.pid : 0,
+      status:       'sleeping',
+      project:      inferred,
+      lastMessage:  ultima.slice(0, 200),
+      messageCount: total,
+      cwd:          (t && t.cwd) || (s && s.cwd) || os.homedir(),
+      updatedAt:    Math.max((s && s.updatedAt) || 0, (t && t.updatedAt) || 0) || now,
+    };
+  }
+
+  const vivas = new Set();
+
   for (const s of Object.values(sessions)) {
     const alive = isPidAlive(s.pid);
-    const msgs  = (history[s.sessionId] || []).map(m => m.text);
-    const inferred = inferProject(msgs);
-    if (customNames[s.sessionId]) inferred.label = customNames[s.sessionId];
-    const entry = {
-      sessionId:    s.sessionId,
-      pid:          s.pid,
-      status:       alive ? (s.status || 'idle') : 'sleeping',
-      project:      inferred,
-      lastMessage:  (msgs[msgs.length - 1] || '').slice(0, 200),
-      messageCount: msgs.length,
-      cwd:          s.cwd || os.homedir(),
-      updatedAt:    s.updatedAt || now,
-    };
+    const entry = montar(s.sessionId, s, transcripts[s.sessionId]);
 
     if (alive) {
+      entry.status = s.status || 'idle';
       active.push(entry);
+      vivas.add(s.sessionId);
       delete newSleep[s.sessionId];
-    } else if (msgs.length > 0) {
+    } else if (entry.messageCount > 0) {
       newSleep[s.sessionId] = entry;
     }
   }
 
+  // Rede de segurança: toda conversa em projects/ dentro do TTL que nao esta
+  // viva entra como dormindo, mesmo que sessions/<pid>.json ja tenha sumido.
+  // E o que faz uma queda de energia deixar de apagar sessoes do painel.
+  for (const [sessionId, t] of Object.entries(transcripts)) {
+    if (vivas.has(sessionId) || dismissed[sessionId]) continue;
+    if (!t.messageCount) continue; // sessao aberta e fechada sem uso
+    newSleep[sessionId] = montar(sessionId, sessions[sessionId], t);
+  }
+
   // Descarta sessoes dormindo paradas ha mais de 90 dias.
-  const cutoff = now - SLEEP_TTL_MS;
   for (const sid of Object.keys(newSleep)) {
     if ((newSleep[sid].updatedAt || 0) < cutoff) delete newSleep[sid];
   }
@@ -244,6 +387,10 @@ const server = http.createServer((req, res) => {
     const sleeping = loadSleeping();
     delete sleeping[sessionId];
     saveSleeping(sleeping);
+    // Marca como dispensada para a varredura nao trazer de volta.
+    const dismissed = loadDismissed();
+    dismissed[sessionId] = Date.now();
+    saveDismissed(dismissed);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -298,6 +445,11 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   checkForUpdate();
+  // Varre sozinho, sem depender de alguem abrir o dashboard. Antes, uma sessao
+  // que morresse enquanto o painel estava fechado sumia sem deixar rastro.
+  const varrer = () => { try { buildData(); } catch (e) { console.log('  [!] varredura: ' + e.message); } };
+  varrer();
+  setInterval(varrer, SCAN_INTERVAL_MS);
   // Re-checa o GitHub periodicamente (a cada 1h) — antes so checava no boot,
   // entao quem deixava o PC ligado nunca via o banner de nova versao.
   setInterval(checkForUpdate, 60 * 60 * 1000);
