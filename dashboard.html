@@ -700,13 +700,26 @@ function badge(status){
 var dismissed = {};
 try { dismissed = JSON.parse(localStorage.getItem('sm_dismissed') || '{}'); } catch{}
 
+// Todo texto que vem de fora (mensagens, nomes, versao) passa por aqui antes
+// de virar HTML — senao um nome de sessao podia carregar codigo para o painel.
+function esc(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+var SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isSessionId(s){ return typeof s === 'string' && SESSION_ID_RE.test(s); }
+var COLOR_RE = /^#[0-9a-f]{3,8}$/i;
+// O servidor recusa acoes sem este cabecalho.
+var POST_HEADERS = {'X-Session-Monitor':'1'};
+
 function dismissCard(sessionId, btn){
   dismissed[sessionId] = true;
   localStorage.setItem('sm_dismissed', JSON.stringify(dismissed));
   var card = document.getElementById('card-'+sessionId);
   if(card){ card.style.transition='opacity .3s'; card.style.opacity='0'; setTimeout(function(){card.remove();},300); }
   // avisa o servidor pra remover dos dormindo também
-  fetch('/api/dismiss/'+sessionId, {method:'POST'}).catch(function(){});
+  fetch('/api/dismiss/'+encodeURIComponent(sessionId), {method:'POST', headers:POST_HEADERS}).catch(function(){});
 }
 
 // nomes customizados salvos localmente
@@ -718,7 +731,7 @@ function saveCustomName(sessionId, name){
   localStorage.setItem('sm_custom_names', JSON.stringify(customNames));
   fetch('/api/rename', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    headers: {'Content-Type':'application/json','X-Session-Monitor':'1'},
     body: JSON.stringify({sessionId: sessionId, name: name})
   }).catch(function(){});
 }
@@ -748,29 +761,33 @@ function startRename(sessionId, currentLabel, spanEl){
 }
 
 function card(s, isSleeping){
+  if (!isSessionId(s.sessionId)) return '';
+  var id = s.sessionId;
   var msg = s.lastMessage
-    ? s.lastMessage.replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    ? esc(s.lastMessage)
     : '<span style="opacity:.4">// sem mensagens</span>';
 
   var action = isSleeping
-    ? '<button class="btn-resume" onclick="resume(\''+s.sessionId+'\',this)">▶ RETOMAR</button>'
+    ? '<button class="btn-resume" data-id="'+id+'" onclick="resume(this.dataset.id,this)">▶ RETOMAR</button>'
     : '<span>'+timeAgo(s.updatedAt)+'</span>';
 
-  var closeBtn = '<button class="btn-close" title="Remover card" onclick="dismissCard(\''+s.sessionId+'\',this)">✕</button>';
+  var closeBtn = '<button class="btn-close" title="Remover card" data-id="'+id+'" onclick="dismissCard(this.dataset.id,this)">✕</button>';
 
   // usar nome customizado se existir
-  var label = (customNames[s.sessionId] || s.project.label).toUpperCase();
-  var isGeneric = !customNames[s.sessionId] && s.project.label === 'Sessão Geral';
+  var label = String(customNames[id] || s.project.label).toUpperCase();
+  var isGeneric = !customNames[id] && s.project.label === 'Sessão Geral';
+  var nameAttrs = ' data-id="'+id+'" data-label="'+esc(label)+'" onclick="startRename(this.dataset.id,this.dataset.label,this)"';
   var nameHtml = isGeneric
-    ? '<span class="pname editable" title="Clique para nomear" onclick="startRename(\''+s.sessionId+'\',\''+label+'\',this)">'+label+' ✎</span>'
-    : '<span class="pname editable" title="Clique para renomear" onclick="startRename(\''+s.sessionId+'\',\''+label+'\',this)">'+label+'</span>';
+    ? '<span class="pname editable" title="Clique para nomear"'+nameAttrs+'>'+esc(label)+' ✎</span>'
+    : '<span class="pname editable" title="Clique para renomear"'+nameAttrs+'>'+esc(label)+'</span>';
 
-  return '<div class="scard s-'+s.status+'" id="card-'+s.sessionId+'">'
-    +'<div class="caccent" style="background:'+s.project.color+'"></div>'
+  var color = COLOR_RE.test(s.project.color) ? s.project.color : '#64748b';
+  return '<div class="scard s-'+esc(s.status)+'" id="card-'+id+'">'
+    +'<div class="caccent" style="background:'+color+'"></div>'
     + closeBtn
     +'<div class="ch">'
     +  '<div class="pinfo">'
-    +    '<span class="pemoji">'+s.project.emoji+'</span>'
+    +    '<span class="pemoji">'+esc(s.project.emoji)+'</span>'
     +    '<div class="pname-wrap">'
     +      nameHtml
     +      (isGeneric ? '<span class="pname-hint">← clique</span>' : '')
@@ -781,8 +798,8 @@ function card(s, isSleeping){
     +'<div class="lmsg">'+msg+'</div>'
     +'<div class="cf">'
     +  '<div class="cmeta">'
-    +    '<span>MSG:'+s.messageCount+'</span>'
-    +    '<span style="opacity:.4">ID:'+s.sessionId.slice(0,8)+'</span>'
+    +    '<span>MSG:'+esc(s.messageCount)+'</span>'
+    +    '<span style="opacity:.4">ID:'+id.slice(0,8)+'</span>'
     +    '<span style="opacity:.6" title="Ultima atividade">'+dateStamp(s.updatedAt)+' ('+timeAgo(s.updatedAt)+')</span>'
     +  '</div>'
     +  action
@@ -793,7 +810,7 @@ function card(s, isSleeping){
 function resume(sessionId, btn){
   btn.classList.add('loading');
   btn.textContent = '>> ABRINDO...';
-  fetch('/api/resume/'+sessionId,{method:'POST'})
+  fetch('/api/resume/'+encodeURIComponent(sessionId),{method:'POST', headers:POST_HEADERS})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.ok){ showToast('// TERMINAL ABERTO · CONTINUE DE ONDE PAROU'); setTimeout(refresh,1500); }
@@ -850,8 +867,8 @@ function checkVersion() {
   fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
     if (d.update) {
       var b = document.getElementById('update-banner');
-      b.innerHTML = 'Nova versao disponivel: ' + d.update.current + ' &rarr; ' + d.update.latest +
-        ' &nbsp;&mdash;&nbsp; <a href="' + d.update.url + '" target="_blank">Ver no GitHub</a>';
+      b.innerHTML = 'Nova versao disponivel: ' + esc(d.update.current) + ' &rarr; ' + esc(d.update.latest) +
+        ' &nbsp;&mdash;&nbsp; <a href="https://github.com/virginiamarcal/session-monitor" target="_blank" rel="noopener">Ver no GitHub</a>';
       b.style.display = 'block';
     }
   }).catch(function(){});

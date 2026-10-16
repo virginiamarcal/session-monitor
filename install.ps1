@@ -39,7 +39,7 @@ if ([Environment]::UserInteractive -and
     `$portOcupada = (netstat -an | Select-String "4242.*LISTENING")
     if (-not `$portOcupada) {
         # Servidor estava parado: sobe e abre o navegador UMA vez.
-        Start-Process "node" -ArgumentList `$dashServer -WindowStyle Hidden
+        Start-Process "node" -ArgumentList "``"`$dashServer``"" -WindowStyle Hidden
         Start-Sleep -Milliseconds 800
         Start-Process `$dashUrl
     }
@@ -72,7 +72,7 @@ Write-Host "  [OK] Auto-start (re)configurado no perfil PowerShell" -ForegroundC
 # 4. Inicia o servidor agora
 $portOcupada = (netstat -an | Select-String "4242.*LISTENING")
 if (-not $portOcupada) {
-    Start-Process "node" -ArgumentList "$dest\server.js" -WindowStyle Hidden
+    Start-Process "node" -ArgumentList "`"$dest\server.js`"" -WindowStyle Hidden
     Start-Sleep -Milliseconds 800
 }
 Start-Process "http://localhost:4242"

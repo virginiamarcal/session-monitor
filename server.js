@@ -327,15 +327,64 @@ function buildData() {
 
 // ─── Abre no Windows Terminal (wt) com perfil PowerShell, igual ao terminal ────
 // ─── que a usuária usa. Usa .ps1 temporário p/ evitar quoting quebrado. ───────
+// Literal entre aspas simples do PowerShell: nada dentro dele e interpretado,
+// so a propria aspa simples precisa ser dobrada.
+function psQuote(s) {
+  return "'" + String(s).replace(/'/g, "''") + "'";
+}
+
 function openTerminal(cwd, claudeArgs) {
   const ps1Path = path.join(os.tmpdir(), `claude_session_${Date.now()}.ps1`);
-  const ps1Content = `Set-Location -LiteralPath "${cwd}"\nclaude ${claudeArgs}\n`;
+  const ps1Content = `Set-Location -LiteralPath ${psQuote(cwd)}\nclaude ${claudeArgs}\n`;
   fs.writeFileSync(ps1Path, ps1Content, 'utf8');
   execSync(`start "" wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File "${ps1Path}"`, { shell: 'cmd.exe' });
 }
 
+// ─── Seguranca ────────────────────────────────────────────────────────────────
+// O id de sessao do Claude Code e sempre um UUID. Qualquer outra coisa e
+// recusada antes de chegar perto do terminal — era por ai que um site
+// malicioso conseguia esconder um comando no botao "Retomar".
+const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isSessionId(s) { return typeof s === 'string' && SESSION_ID_RE.test(s); }
+
+// So o proprio painel pode falar com o servidor. O Host barra DNS rebinding
+// (um dominio de fora apontado para 127.0.0.1); Origin e Sec-Fetch-Site barram
+// outro site aberto no navegador tentando ler sessoes ou disparar acoes.
+const ALLOWED_HOSTS   = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
+const ALLOWED_ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
+function requestAllowed(req) {
+  if (!ALLOWED_HOSTS.has(String(req.headers.host || '').toLowerCase())) return false;
+  // A pagina em si nao carrega dado nenhum (tudo vem de /api/) e pode ser
+  // aberta por link ou atalho; so nao pode ser embutida (X-Frame-Options).
+  if (req.method === 'GET' && !req.url.startsWith('/api/')) return true;
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') return false;
+  const origin = req.headers.origin;
+  if (origin && !ALLOWED_ORIGINS.has(origin.toLowerCase())) return false;
+  if (req.method !== 'GET') {
+    // Acoes exigem Origin do painel e um cabecalho proprio: um navegador nao
+    // deixa outro site mandar esse cabecalho sem permissao, que nunca damos.
+    if (!origin) return false;
+    if (req.headers['x-session-monitor'] !== '1') return false;
+  }
+  return true;
+}
+
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Cache-Control': 'no-store',
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src https://fonts.gstatic.com; img-src 'self' data:; " +
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+};
+
 // ─── Retomar sessão específica ────────────────────────────────────────────────
 function resumeSession(sessionId) {
+  if (!isSessionId(sessionId)) return { ok: false, error: 'id invalido' };
   const sleeping = loadSleeping();
   const entry = sleeping[sessionId] || {};
   const cwd = entry.cwd || os.homedir();
@@ -352,6 +401,7 @@ function resumeSession(sessionId) {
 
 // ─── Reiniciar sessão: abre claude limpo na mesma pasta ───────────────────────
 function restartSession(sessionId) {
+  if (!isSessionId(sessionId)) return { ok: false, error: 'id invalido' };
   const sleeping = loadSleeping();
   const entry = sleeping[sessionId] || {};
   const cwd = entry.cwd || os.homedir();
@@ -370,10 +420,17 @@ function restartSession(sessionId) {
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
 
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+  if (!requestAllowed(req)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('forbidden');
+    return;
+  }
+
   if (url === '/api/sessions' && req.method === 'GET') {
     try {
       const data = buildData();
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
     } catch (e) {
       res.writeHead(500);
@@ -384,6 +441,7 @@ const server = http.createServer((req, res) => {
 
   if (url.startsWith('/api/dismiss/') && req.method === 'POST') {
     const sessionId = url.replace('/api/dismiss/', '').trim();
+    if (!isSessionId(sessionId)) { res.writeHead(400); res.end('{}'); return; }
     const sleeping = loadSleeping();
     delete sleeping[sessionId];
     saveSleeping(sleeping);
@@ -398,11 +456,13 @@ const server = http.createServer((req, res) => {
 
   if (url === '/api/rename' && req.method === 'POST') {
     let body = '';
-    req.on('data', c => body += c);
+    req.on('data', c => { body += c; if (body.length > 4096) req.destroy(); });
     req.on('end', () => {
       try {
         const { sessionId, name } = JSON.parse(body);
-        if (sessionId && name) saveCustomName(sessionId, name);
+        if (!isSessionId(sessionId) || typeof name !== 'string') throw new Error('invalido');
+        const limpo = name.trim().slice(0, 80);
+        if (limpo) saveCustomName(sessionId, limpo);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch {
@@ -427,7 +487,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (url === '/api/version' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ update: updateAvailable }));
     return;
   }
